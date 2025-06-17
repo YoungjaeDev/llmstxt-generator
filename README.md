@@ -1,3 +1,7 @@
+# ⚠️ DEPRECATION NOTICE
+
+This API is being deprecated in favor of our main endpoints. Here is an example repo that generates LLMs.txt files: https://github.com/mendableai/create-llmstxt-py. This API endpoint will still remain active but we will no longer be maintaining it after June 30, 2025.
+
 # llms.txt Generator 🚀
 
 Generate consolidated text files from websites for LLM training and inference. Powered by [@firecrawl_dev](https://twitter.com/firecrawl_dev) for web crawling and GPT-4-mini for text processing.

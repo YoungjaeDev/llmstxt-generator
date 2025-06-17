@@ -31,16 +31,17 @@ export default function RootLayout({
       <body
       className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-background text-secondary-foreground`}
       >
-        <div className="w-full bg-orange-500 py-2 text-center text-sm text-white">
-          🎉 The official Firecrawl llms.txt endpoint is now available! 
+        <div className="w-full bg-red-800/80 py-2 px-4 text-center text-sm text-white font-semibold">
+          ⚠️ This API is being deprecated in favor of our main endpoints. Here is an example repo that generates LLMs.txt files:
           <a 
-            href="https://docs.firecrawl.dev/features/alpha/llmstxt"
-            className="ml-1 underline hover:text-orange-100"
+            href="https://github.com/mendableai/create-llmstxt-py"
+            className="ml-1 underline hover:text-red-200"
             target="_blank"
             rel="noopener noreferrer"
           >
-            Learn more →
-          </a>
+            https://github.com/mendableai/create-llmstxt-py
+          </a>.<br />
+          This API endpoint will still remain active but we will no longer be maintaining it after June 30, 2025.
         </div>
         <ThemeProvider
           attribute="class"
