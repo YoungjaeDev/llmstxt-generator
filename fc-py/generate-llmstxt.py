@@ -76,6 +76,23 @@ class Config:
             self.exclude_exact = []
         if self.include_patterns is None:
             self.include_patterns = []
+        
+        # API URL 정규화: /v1이 없으면 자동 추가
+        self.firecrawl_base_url = self._normalize_api_url(self.firecrawl_base_url)
+    
+    def _normalize_api_url(self, url: str) -> str:
+        """API URL을 정규화하여 /v1이 없으면 추가"""
+        if not url:
+            return "https://api.firecrawl.dev/v1"
+        
+        # 끝의 슬래시 제거
+        url = url.rstrip('/')
+        
+        # /v1이 없으면 추가
+        if not url.endswith('/v1'):
+            url += '/v1'
+        
+        return url
     
     @classmethod
     def from_yaml(cls, config_path: str) -> 'Config':
@@ -86,9 +103,14 @@ class Config:
         with open(config_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
         
+        # 임시 인스턴스 생성하여 _normalize_api_url 메서드 사용
+        temp_instance = cls()
+        
         return cls(
             # API settings
-            firecrawl_base_url=data.get('api', {}).get('firecrawl', {}).get('base_url', cls.firecrawl_base_url),
+            firecrawl_base_url=temp_instance._normalize_api_url(
+                data.get('api', {}).get('firecrawl', {}).get('base_url', cls.firecrawl_base_url)
+            ),
             firecrawl_timeout=data.get('api', {}).get('firecrawl', {}).get('timeout', cls.firecrawl_timeout),
             openai_model=data.get('api', {}).get('openai', {}).get('model', cls.openai_model),
             openai_temperature=data.get('api', {}).get('openai', {}).get('temperature', cls.openai_temperature),
@@ -422,7 +444,7 @@ def main():
     
     # Base URL 환경변수로 덮어쓰기
     if os.getenv("FIRECRAWL_BASE_URL"):
-        config.firecrawl_base_url = os.getenv("FIRECRAWL_BASE_URL")
+        config.firecrawl_base_url = config._normalize_api_url(os.getenv("FIRECRAWL_BASE_URL"))
         logger.info(f"Using Firecrawl base URL from environment: {config.firecrawl_base_url}")
     
     # API 키 유효성 검사

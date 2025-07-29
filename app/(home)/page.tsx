@@ -40,7 +40,6 @@ export default function Page() {
     openai: false 
   });
   const [envLoaded, setEnvLoaded] = React.useState(false);
-  const [usePythonBackend, setUsePythonBackend] = React.useState(true); // 기본값을 true로 설정
   const [isConfigModalOpen, setIsConfigModalOpen] = React.useState(false);
 
   // Configuration state
@@ -139,68 +138,34 @@ export default function Page() {
   }, [loading, mapUrls]);
 
   const callApi = React.useCallback(async () => {
-    const isFull = wantsFull && hasKey;
     const formattedUrl = url.toLowerCase();
 
     setLoading(true);
     try {
-      if (usePythonBackend && openaiKey) {
-        // Python 백엔드 사용
-        const pythonResponse = await fetch("/api/python-generate", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url: formattedUrl,
-            firecrawlApiKey: firecrawlKey,
-            openaiApiKey: openaiKey,
-            config: config
-          }),
-        });
-        const data = await pythonResponse.json();
-        
-        if (data.error) {
-          throw new Error(data.error);
-        }
-        
-        setFinalMessage({
-          fullMessage: data.llms_fulltxt,
-          message: data.llmstxt,
-          isFull: true, // Python은 항상 full 결과
-        });
-      } else {
-        // 기존 Firecrawl 백엔드 사용
-        const mapResponse = await fetch("/api/map", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url: formattedUrl,
-            bringYourOwnFirecrawlApiKey: firecrawlKey,
-          }),
-        });
-        const mapData = await mapResponse.json();
-        setMapUrls(mapData.mapUrls);
-        const llmsResponse = await fetch("/api/service", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url: formattedUrl,
-            urls: mapData.mapUrls,
-            bringYourOwnFirecrawlApiKey: firecrawlKey,
-          }),
-        });
-        const data = await llmsResponse.json();
-        setFinalMessage({
-          fullMessage: data.llmsFulltxt,
-          message: data.llmstxt,
-          isFull,
-        });
+      // Python 백엔드만 사용
+      const response = await fetch("/api/service", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: formattedUrl,
+          firecrawlApiKey: firecrawlKey,
+          openaiApiKey: openaiKey,
+          config: config
+        }),
+      });
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
       }
+      
+      setFinalMessage({
+        fullMessage: data.llmsFulltxt,
+        message: data.llmstxt,
+        isFull: true, // Python은 항상 full 결과
+      });
     } catch (error) {
       setFinalMessage(null);
       toast({
@@ -210,7 +175,7 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }, [url, wantsFull, hasKey, firecrawlKey, usePythonBackend, openaiKey, config]);
+  }, [url, wantsFull, hasKey, firecrawlKey, openaiKey, config]);
 
   const handleSubmit = React.useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
@@ -307,26 +272,10 @@ export default function Page() {
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
                   <Switch
-                    id="python-backend"
-                    disabled={loading}
-                    checked={usePythonBackend}
-                    onCheckedChange={setUsePythonBackend}
-                  />
-                  <Label htmlFor="python-backend">Python Backend</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
                     id="airplane-mode"
                     disabled={loading}
                     checked={isFull}
-                    onCheckedChange={(willCheck) => {
-                      if (willCheck && !usePythonBackend) {
-                        setIsModalOpen(true);
-                        setWantsFull(true);
-                      } else {
-                        setWantsFull(willCheck);
-                      }
-                    }}
+                    onCheckedChange={setWantsFull}
                   />
                   <Label htmlFor="airplane-mode">llms-full.txt</Label>
                 </div>
@@ -349,20 +298,18 @@ export default function Page() {
             >
               {hasEnvKeys.firecrawl ? 'Override Firecrawl API key' : 'Enter Firecrawl API key for full generation'}
             </button>
-            {usePythonBackend && (
-              <button
-                onClick={() => {
-                  setIsConfigModalOpen(true);
-                }}
-                className="text-sm text-blue-600 hover:text-blue-500 transition-colors"
-              >
-                Configure Python Settings
-              </button>
-            )}
+            <button
+              onClick={() => {
+                setIsConfigModalOpen(true);
+              }}
+              className="text-sm text-blue-600 hover:text-blue-500 transition-colors"
+            >
+              Configure Python Settings
+            </button>
           </div>
           
           {/* Environment Variables Status */}
-          {envLoaded && usePythonBackend && (
+          {envLoaded && (
             <div className="text-xs bg-gray-50 dark:bg-gray-800 p-2 rounded border">
               <div className="font-medium mb-1">Environment Status:</div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-1">
@@ -477,19 +424,56 @@ export default function Page() {
 
             {finalMessage && !loading && (
               <div className="flex flex-col gap-2 mt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    navigator.clipboard.writeText(finalMessage.isFull ? finalMessage.fullMessage : finalMessage.message);
-                    toast({
-                      title: "Copied to clipboard",
-                      description:
-                        "The result has been copied to your clipboard",
-                    });
-                  }}
-                >
-                  Copy
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(finalMessage.isFull ? finalMessage.fullMessage : finalMessage.message);
+                      toast({
+                        title: "Copied to clipboard",
+                        description:
+                          "The result has been copied to your clipboard",
+                      });
+                    }}
+                  >
+                    Copy
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const content = finalMessage.isFull ? finalMessage.fullMessage : finalMessage.message;
+                      const blob = new Blob([content], { type: 'text/plain' });
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      
+                      // Extract domain from URL for filename
+                      let filename = finalMessage.isFull ? 'llms-full.txt' : 'llms.txt';
+                      try {
+                        const inputUrl = url.startsWith('http') ? url : `https://${url}`;
+                        const urlObj = new URL(inputUrl);
+                        const domain = urlObj.hostname.replace('www.', '');
+                        filename = finalMessage.isFull ? `${domain}-llms-full.txt` : `${domain}-llms.txt`;
+                      } catch (e) {
+                        // Keep default filename if URL parsing fails
+                      }
+                      
+                      a.download = filename;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+                      
+                      toast({
+                        title: "File downloaded",
+                        description: `${filename} has been saved to your downloads folder`,
+                      });
+                    }}
+                                     >
+                     {finalMessage.isFull ? "Download Full" : "Download"}
+                   </Button>
+                </div>
 
                 {!hasKey && (
                   <Button className="w-full" onClick={retryWithFullGeneration}>

@@ -1,70 +1,134 @@
 import { NextResponse } from 'next/server';
-import FirecrawlApp from '@mendable/firecrawl-js';
-import { config } from 'dotenv';
-config();
-import { createClient } from '@supabase/supabase-js'
+import { spawn } from 'child_process';
+import path from 'path';
+import fs from 'fs';
+import { promisify } from 'util';
+
+const readFile = promisify(fs.readFile);
+const unlink = promisify(fs.unlink);
 
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
-  const { url, urls, bringYourOwnFirecrawlApiKey } = await request.json();
-  let firecrawlApiKey: string | undefined;
-  let maxUrls: number = 100;
-  let no_limit: boolean = false;
+  try {
+    const { url, firecrawlApiKey, openaiApiKey, config } = await request.json();
 
-  if (bringYourOwnFirecrawlApiKey) {
-    firecrawlApiKey = bringYourOwnFirecrawlApiKey;
-    console.log("Using provided Firecrawl API key. Limit set to 100");
-    no_limit = true;
-  } else {
-    firecrawlApiKey = process.env.FIRECRAWL_API_KEY;
-    maxUrls = 10;
-    console.log(`Using environment Firecrawl API key. Limit set to ${maxUrls}`);
+    // API 키 처리: 사용자 제공 키 또는 환경변수 사용
+    const finalFirecrawlKey = firecrawlApiKey || process.env.FIRECRAWL_API_KEY;
+    const finalOpenaiKey = openaiApiKey || process.env.OPENAI_API_KEY;
+
+    if (!finalFirecrawlKey || !finalOpenaiKey) {
+      return NextResponse.json(
+        { error: 'Both Firecrawl and OpenAI API keys are required' },
+        { status: 400 }
+      );
+    }
+
+    // Python 가상환경 및 스크립트 경로 설정
+    const fcPyDir = path.join(process.cwd(), 'fc-py');
+    const scriptPath = path.join(fcPyDir, 'generate-llmstxt.py');
+    const outputDir = path.join(process.cwd(), 'temp');
+    
+    // 가상환경 Python 경로 설정 (플랫폼별)
+    const isWindows = process.platform === 'win32';
+    const venvPythonPath = isWindows 
+      ? path.join(fcPyDir, '.venv', 'Scripts', 'python.exe')
+      : path.join(fcPyDir, '.venv', 'bin', 'python');
+    
+    // 가상환경 Python이 없으면 시스템 Python 사용
+    const pythonCommand = fs.existsSync(venvPythonPath) ? venvPythonPath : 'python';
+    
+    // 임시 출력 디렉토리 생성
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    // Python 스크립트 실행 인자 구성
+    const args = [
+      'generate-llmstxt.py',  // 상대 경로로 변경
+      url,
+      '--firecrawl-api-key', finalFirecrawlKey,
+      '--openai-api-key', finalOpenaiKey,
+      '--output-dir', outputDir
+    ];
+
+    // config 파일이 있으면 추가
+    const configPath = path.join(fcPyDir, 'config.yaml');
+    if (fs.existsSync(configPath)) {
+      args.push('--config', 'config.yaml');  // 상대 경로로 변경
+    }
+
+    console.log('Executing Python script with command:', pythonCommand);
+    console.log('Working directory:', fcPyDir);
+    console.log('Args:', args);
+
+    // Python 스크립트 실행
+    const result = await new Promise<{ llmstxt: string; llmsFulltxt: string }>((resolve, reject) => {
+      const pythonProcess = spawn(pythonCommand, args, {
+        cwd: fcPyDir,  // fc-py 폴더에서 실행
+        env: {
+          ...process.env,
+          FIRECRAWL_API_KEY: finalFirecrawlKey,
+          OPENAI_API_KEY: finalOpenaiKey,
+          FIRECRAWL_BASE_URL: process.env.FIRECRAWL_BASE_URL || config?.firecrawl_base_url
+        }
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      pythonProcess.stdout.on('data', (data) => {
+        stdout += data.toString();
+        console.log('Python stdout:', data.toString());
+      });
+
+      pythonProcess.stderr.on('data', (data) => {
+        stderr += data.toString();
+        console.error('Python stderr:', data.toString());
+      });
+
+      pythonProcess.on('close', async (code) => {
+        if (code !== 0) {
+          reject(new Error(`Python script failed with code ${code}. Error: ${stderr}`));
+          return;
+        }
+
+        try {
+          // 도메인 추출하여 파일명 생성
+          const domain = new URL(url).hostname.replace('www.', '');
+          const llmsFilePath = path.join(outputDir, `${domain}-llms.txt`);
+          const llmsFullFilePath = path.join(outputDir, `${domain}-llms-full.txt`);
+
+          // 생성된 파일들 읽기
+          const llmstxt = await readFile(llmsFilePath, 'utf-8');
+          const llmsFulltxt = fs.existsSync(llmsFullFilePath) 
+            ? await readFile(llmsFullFilePath, 'utf-8')
+            : llmstxt;
+
+          // 임시 파일들 정리
+          try {
+            await unlink(llmsFilePath);
+            if (fs.existsSync(llmsFullFilePath)) {
+              await unlink(llmsFullFilePath);
+            }
+          } catch (cleanupError) {
+            console.warn('Failed to cleanup temp files:', cleanupError);
+          }
+
+          resolve({ llmstxt, llmsFulltxt });
+        } catch (fileError) {
+          reject(new Error(`Failed to read output files: ${fileError instanceof Error ? fileError.message : String(fileError)}`));
+        }
+      });
+    });
+
+    return NextResponse.json(result);
+
+  } catch (error: any) {
+    console.error('Python backend error:', error);
+    return NextResponse.json(
+      { error: 'Python backend execution failed', details: error.message },
+      { status: 500 }
+    );
   }
-
-  if (!firecrawlApiKey) {
-    throw new Error('FIRECRAWL_API_KEY is not set');
-  }
-
-  const app = new FirecrawlApp({ 
-    apiKey: firecrawlApiKey,
-    apiUrl: process.env.FIRECRAWL_BASE_URL || "https://api.firecrawl.dev/v1"
-  });
-
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_KEY;
-  const supabase = createClient(supabaseUrl!, supabaseKey!);
-
-  // Define generation parameters
-  const params = {
-    maxUrls,
-    showFullText: true,
-    urls
-  };
-
-  // Generate LLMs.txt with polling
-  //@ts-ignore
-  const results = await app.generateLLMsText(url, params);
-
-  if (!results.success) {
-    throw new Error(`Failed to generate: ${results.error || "Unknown error"}`);
-  }
-
-  const llmstxt = !bringYourOwnFirecrawlApiKey 
-    ? `*Note: This is an incomplete result, please enable full generation by entering a Firecrawl key.\n\n${results.data.llmstxt}`
-    : results.data.llmstxt;
-
-  const llmsFulltxt = results.data.llmsfulltxt;
-
-  const { data, error } = await supabase
-    .from('cache')
-    .insert([
-      { url: url, llmstxt: llmstxt, llmsfulltxt: llmsFulltxt, no_limit: no_limit }
-    ]);
-
-  if (error) {
-    throw new Error(`Failed to insert into Supabase: ${error.message}`);
-  }
-
-  return NextResponse.json({ llmstxt: llmstxt, llmsFulltxt: llmsFulltxt });
 }
