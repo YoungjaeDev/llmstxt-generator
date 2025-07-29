@@ -1,0 +1,22 @@
+# https://docs.firecrawl.dev/ llms.txt
+
+- [Firecrawl API Documentation](https://docs.firecrawl.dev): Comprehensive guide for Firecrawl API, SDKs, and integrations.
+- [Advanced Web Scraping](https://docs.firecrawl.dev/advanced-scraping-guide): Comprehensive guide for advanced web scraping with Firecrawl features
+- [FIRE-1 Agent Guide](https://docs.firecrawl.dev/agents/fire-1): Comprehensive guide to using FIRE-1 AI agent for scraping
+- [Batch Scrape API](https://docs.firecrawl.dev/api-reference/endpoint/batch-scrape): API endpoint to scrape multiple URLs with optional LLM extraction.
+- [Cancel Batch Scrape](https://docs.firecrawl.dev/api-reference/endpoint/batch-scrape-delete): API endpoint to cancel a batch scrape job using DELETE request.
+- [Batch Scrape Status](https://docs.firecrawl.dev/api-reference/endpoint/batch-scrape-get): Retrieve current status and details of batch scrape jobs.
+- [Batch Scrape Errors](https://docs.firecrawl.dev/api-reference/endpoint/batch-scrape-get-errors): Retrieve detailed error reports for batch scrape jobs via API.
+- [Get Active Crawls](https://docs.firecrawl.dev/api-reference/endpoint/crawl-active): API endpoint to retrieve all active crawls for authenticated team
+- [Cancel Crawl Job](https://docs.firecrawl.dev/api-reference/endpoint/crawl-delete): API endpoint to delete and cancel an ongoing crawl job.
+- [Get Crawl Status](https://docs.firecrawl.dev/api-reference/endpoint/crawl-get): Retrieve detailed status and results of a crawl job via API
+- [Get Crawl Errors](https://docs.firecrawl.dev/api-reference/endpoint/crawl-get-errors): Retrieve detailed error reports for specific crawl jobs via API.
+- [Crawl API Endpoint](https://docs.firecrawl.dev/api-reference/endpoint/crawl-post): POST endpoint to crawl URLs with customizable options.
+- [Credit Usage Endpoint](https://docs.firecrawl.dev/api-reference/endpoint/credit-usage): Retrieve remaining credits for authenticated team via API call
+- [Extract Endpoint API](https://docs.firecrawl.dev/api-reference/endpoint/extract): API to extract structured data from web pages using LLMs
+- [Get Extract Status](https://docs.firecrawl.dev/api-reference/endpoint/extract-get): Retrieve the status of an extract job using API endpoint.
+- [Map Endpoint API](https://docs.firecrawl.dev/api-reference/endpoint/map): API endpoint to map multiple URLs with customizable options.
+- [Scrape Endpoint API](https://docs.firecrawl.dev/api-reference/endpoint/scrape): API to scrape URLs and extract content using LLMs
+- [Search API Endpoint](https://docs.firecrawl.dev/api-reference/endpoint/search): API endpoint for searching and scraping web content with options
+- [Token Usage Endpoint](https://docs.firecrawl.dev/api-reference/endpoint/token-usage): Retrieve remaining tokens for authenticated team via API call
+- [Firecrawl API Overview](https://docs.firecrawl.dev/api-reference/introduction): Comprehensive guide to Firecrawl API features and usage.

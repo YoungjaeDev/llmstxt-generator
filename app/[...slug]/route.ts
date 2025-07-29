@@ -15,6 +15,14 @@ export async function GET(
     let rawUrl = resolvedParams.slug.join('/');
     console.log(`Raw URL from slug: ${rawUrl}`);
     
+    // Skip API routes - let them be handled by their own route handlers
+    if (rawUrl.startsWith('api/')) {
+      return NextResponse.json(
+        { error: 'API routes should be handled by their specific handlers' },
+        { status: 404 }
+      );
+    }
+    
     // Normalize the URL
     let targetUrl = rawUrl;
     
@@ -47,7 +55,10 @@ export async function GET(
     }
 
     // Initialize FirecrawlApp with the API key
-    const app = new FirecrawlApp({ apiKey: firecrawlApiKey });
+    const app = new FirecrawlApp({ 
+      apiKey: firecrawlApiKey,
+      apiUrl: process.env.FIRECRAWL_BASE_URL || "https://api.firecrawl.dev/v1"
+    });
 
     // Set maxUrls based on whether user provided their own API key
     const maxUrls = searchParams.get('FIRECRAWL_API_KEY') || request.headers.get('FIRECRAWL_API_KEY') ? 100 : 10;

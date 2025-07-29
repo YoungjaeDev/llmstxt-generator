@@ -1,0 +1,71 @@
+# llms.txt Generator Configuration
+      
+# API Settings
+api:
+  firecrawl:
+    base_url: "https://api.firecrawl.dev/v1"
+    timeout: 30000  # milliseconds
+  openai:
+    model: "gpt-4.1-mini"
+    temperature: 0.3
+    max_tokens: 100
+
+# URL Processing Settings
+urls:
+  # Maximum URLs to discover during mapping phase
+  map_limit: 500
+  
+  # Maximum URLs to actually process (should be <= map_limit, -1 for unlimited)
+  process_limit: -1
+  
+  # Include subdomains when mapping
+  include_subdomains: false
+  
+  # Use sitemap for discovery
+  use_sitemap: true
+  
+  # URL patterns to exclude (supports both strings and regex patterns)
+  exclude_patterns:
+    - "/compare"          # Exclude any URL containing "/compare"
+  
+  # Exclude URLs that exactly match these patterns
+  exclude_exact:
+    
+  # Only include URLs matching these patterns (if specified, acts as whitelist)
+  include_patterns: []
+
+# Processing Settings
+processing:
+  # Number of URLs to process in parallel batches
+  batch_size: 10
+  
+  # Maximum concurrent workers per batch
+  max_workers: 5
+  
+  # Delay between batches (seconds) to avoid rate limiting
+  batch_delay: 1.0
+  
+  # Content length limit for OpenAI processing (characters)
+  content_limit: 4000
+
+# Output Settings
+output:
+  # Generate full text file
+  generate_full_text: true
+  
+  # Remove page separators from full text
+  clean_page_separators: true
+  
+  # File naming pattern
+  filename_pattern: "{domain}-llms.txt"
+  full_filename_pattern: "{domain}-llms-full.txt"
+
+# Scraping Settings
+scraping:
+  formats: ["markdown"]
+  only_main_content: true
+  
+# Logging Settings
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s" 

@@ -31,11 +31,72 @@ export default function Page() {
   const prevIsModalOpen = usePrevious(isModalOpen);
   const [wantsFull, setWantsFull] = React.useState(false);
   const [firecrawlKey, setFirecrawlKey] = React.useState("");
+  const [openaiKey, setOpenaiKey] = React.useState("");
+  
+  // Check if environment variables are available (for display purposes)
+  const [hasEnvKeys, setHasEnvKeys] = React.useState({ 
+    firecrawl: false, 
+    firecrawl_base_url: "https://api.firecrawl.dev/v1",
+    openai: false 
+  });
+  const [envLoaded, setEnvLoaded] = React.useState(false);
+  const [usePythonBackend, setUsePythonBackend] = React.useState(true); // 기본값을 true로 설정
+  const [isConfigModalOpen, setIsConfigModalOpen] = React.useState(false);
+
+  // Configuration state
+  const [config, setConfig] = React.useState({
+    firecrawl_base_url: "",
+    map_limit: 500,
+    process_limit: -1,
+    include_subdomains: false,
+    use_sitemap: true,
+    exclude_patterns: [] as string[],
+    batch_size: 10,
+    max_workers: 5,
+    batch_delay: 1.0,
+    content_limit: 4000,
+    generate_full_text: true,
+    clean_page_separators: true,
+    openai_model: "gpt-4.1-mini",
+    openai_temperature: 0.3,
+    openai_max_tokens: 100
+  });
 
   const [url, setUrl] = React.useState("");
 
   const hasKey = firecrawlKey.length > 0;
-  const isFull = wantsFull && hasKey;
+  const isFull = wantsFull && (hasKey || hasEnvKeys.firecrawl);
+  
+  // Check environment variables on component mount
+  React.useEffect(() => {
+    const checkEnvKeys = async () => {
+      try {
+        const response = await fetch('/api/check-env');
+        if (response.ok) {
+          const data = await response.json();
+          setHasEnvKeys(data);
+          setEnvLoaded(true);
+          // Set config base URL from environment if available
+          if (data.firecrawl_base_url) {
+            setConfig(prev => ({
+              ...prev,
+              firecrawl_base_url: data.firecrawl_base_url
+            }));
+          }
+        }
+              } catch (error) {
+          console.log('Could not check environment variables');
+          // Set default values if check fails
+          setHasEnvKeys({ 
+            firecrawl: false, 
+            firecrawl_base_url: "https://api.firecrawl.dev/v1",
+            openai: false 
+          });
+          setEnvLoaded(true);
+        }
+    };
+    checkEnvKeys();
+  }, []);
 
   const [loading, setLoading] = useState<boolean>(false);
   const [mapUrls, setMapUrls] = useState<string[]>([]);
@@ -83,45 +144,73 @@ export default function Page() {
 
     setLoading(true);
     try {
-      const mapResponse = await fetch("/api/map", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: formattedUrl,
-          bringYourOwnFirecrawlApiKey: firecrawlKey,
-        }),
-      });
-      const mapData = await mapResponse.json();
-      setMapUrls(mapData.mapUrls);
-      const llmsResponse = await fetch("/api/service", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: formattedUrl,
-          urls: mapData.mapUrls,
-          bringYourOwnFirecrawlApiKey: firecrawlKey,
-        }),
-      });
-      const data = await llmsResponse.json();
-      setFinalMessage({
-        fullMessage: data.llmsFulltxt,
-        message: data.llmstxt,
-        isFull,
-      });
+      if (usePythonBackend && openaiKey) {
+        // Python 백엔드 사용
+        const pythonResponse = await fetch("/api/python-generate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            url: formattedUrl,
+            firecrawlApiKey: firecrawlKey,
+            openaiApiKey: openaiKey,
+            config: config
+          }),
+        });
+        const data = await pythonResponse.json();
+        
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
+        setFinalMessage({
+          fullMessage: data.llms_fulltxt,
+          message: data.llmstxt,
+          isFull: true, // Python은 항상 full 결과
+        });
+      } else {
+        // 기존 Firecrawl 백엔드 사용
+        const mapResponse = await fetch("/api/map", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            url: formattedUrl,
+            bringYourOwnFirecrawlApiKey: firecrawlKey,
+          }),
+        });
+        const mapData = await mapResponse.json();
+        setMapUrls(mapData.mapUrls);
+        const llmsResponse = await fetch("/api/service", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            url: formattedUrl,
+            urls: mapData.mapUrls,
+            bringYourOwnFirecrawlApiKey: firecrawlKey,
+          }),
+        });
+        const data = await llmsResponse.json();
+        setFinalMessage({
+          fullMessage: data.llmsFulltxt,
+          message: data.llmstxt,
+          isFull,
+        });
+      }
     } catch (error) {
       setFinalMessage(null);
       toast({
         title: "Error",
-        description: "Something went wrong, please try again later",
+        description: error instanceof Error ? error.message : "Something went wrong, please try again later",
       });
     } finally {
       setLoading(false);
     }
-  }, [url, wantsFull, hasKey, firecrawlKey]);
+  }, [url, wantsFull, hasKey, firecrawlKey, usePythonBackend, openaiKey, config]);
 
   const handleSubmit = React.useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
@@ -215,21 +304,32 @@ export default function Page() {
 
             {/* Right */}
             <div className="flex space-x-4">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="airplane-mode"
-                  disabled={loading}
-                  checked={isFull}
-                  onCheckedChange={(willCheck) => {
-                    if (willCheck) {
-                      setIsModalOpen(true);
-                      setWantsFull(true);
-                    } else {
-                      setWantsFull(false);
-                    }
-                  }}
-                />
-                <Label htmlFor="airplane-mode">llms-full.txt</Label>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="python-backend"
+                    disabled={loading}
+                    checked={usePythonBackend}
+                    onCheckedChange={setUsePythonBackend}
+                  />
+                  <Label htmlFor="python-backend">Python Backend</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="airplane-mode"
+                    disabled={loading}
+                    checked={isFull}
+                    onCheckedChange={(willCheck) => {
+                      if (willCheck && !usePythonBackend) {
+                        setIsModalOpen(true);
+                        setWantsFull(true);
+                      } else {
+                        setWantsFull(willCheck);
+                      }
+                    }}
+                  />
+                  <Label htmlFor="airplane-mode">llms-full.txt</Label>
+                </div>
               </div>
               <Button className="w-24" disabled={canSubmit}>
                 {!loading && <span>Generate</span>}
@@ -239,14 +339,51 @@ export default function Page() {
           </div>
         </form>
 
-        <button
-          onClick={() => {
-            setIsModalOpen(true);
-          }}
-          className="mt-2 text-sm text-primary hover:text-primary/80 transition-colors"
-        >
-          Enter Firecrawl API key for full generation
-        </button>
+                <div className="flex flex-col space-y-2 mt-2">
+          <div className="flex space-x-4">
+            <button
+              onClick={() => {
+                setIsModalOpen(true);
+              }}
+              className="text-sm text-primary hover:text-primary/80 transition-colors"
+            >
+              {hasEnvKeys.firecrawl ? 'Override Firecrawl API key' : 'Enter Firecrawl API key for full generation'}
+            </button>
+            {usePythonBackend && (
+              <button
+                onClick={() => {
+                  setIsConfigModalOpen(true);
+                }}
+                className="text-sm text-blue-600 hover:text-blue-500 transition-colors"
+              >
+                Configure Python Settings
+              </button>
+            )}
+          </div>
+          
+          {/* Environment Variables Status */}
+          {envLoaded && usePythonBackend && (
+            <div className="text-xs bg-gray-50 dark:bg-gray-800 p-2 rounded border">
+              <div className="font-medium mb-1">Environment Status:</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-1">
+                <span className={hasEnvKeys.firecrawl ? "text-green-600" : "text-red-500"}>
+                  Firecrawl: {hasEnvKeys.firecrawl ? "✅" : "❌"}
+                </span>
+                <span className={hasEnvKeys.openai ? "text-green-600" : "text-red-500"}>
+                  OpenAI: {hasEnvKeys.openai ? "✅" : "❌"}
+                </span>
+                <span className={hasEnvKeys.firecrawl_base_url !== "https://api.firecrawl.dev/v1" ? "text-blue-600" : "text-gray-500"}>
+                  Custom URL: {hasEnvKeys.firecrawl_base_url !== "https://api.firecrawl.dev/v1" ? "✅" : "Default"}
+                </span>
+              </div>
+              {(!hasEnvKeys.firecrawl || !hasEnvKeys.openai) && (
+                <div className="mt-1 text-orange-600 font-medium">
+                  ⚠️ Missing API keys - please configure them in settings or .env file
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="w-full overflow-hidden flex flex-col gap-2 mt-4">
           <div className="relative w-full">
@@ -387,8 +524,10 @@ export default function Page() {
             <CredenzaHeader>
               <CredenzaTitle>Enable full generation</CredenzaTitle>
               <CredenzaDescription>
-                Please enter your Firecrawl API key to enable the full
-                generation feature.
+                {hasEnvKeys.firecrawl 
+                  ? 'API key found in environment. You can override it here if needed.' 
+                  : 'Please enter your Firecrawl API key to enable the full generation feature.'
+                }
               </CredenzaDescription>
             </CredenzaHeader>
             <CredenzaBody>
@@ -396,10 +535,15 @@ export default function Page() {
                 <Input
                   disabled={loading}
                   autoFocus
-                  placeholder="Paste your Firecrawl API key"
+                  placeholder={hasEnvKeys.firecrawl ? "Override environment API key (optional)" : "Paste your Firecrawl API key"}
                   value={firecrawlKey}
                   onChange={(e) => setFirecrawlKey(e.target.value)}
                 />
+                {hasEnvKeys.firecrawl && (
+                  <p className="text-xs text-green-600 mt-1">
+                    ✅ Firecrawl API key found in environment
+                  </p>
+                )}
                 <a
                   href="https://firecrawl.dev"
                   target="_blank"
@@ -416,6 +560,199 @@ export default function Page() {
               </CredenzaClose>
             </CredenzaFooter>
           </form>
+        </CredenzaContent>
+      </Credenza>
+
+      {/* Python Configuration Modal */}
+      <Credenza
+        open={isConfigModalOpen}
+        onOpenChange={setIsConfigModalOpen}
+      >
+        <CredenzaContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <CredenzaHeader>
+            <CredenzaTitle>Python Backend Configuration</CredenzaTitle>
+            <CredenzaDescription>
+              Configure advanced settings for the Python backend
+            </CredenzaDescription>
+          </CredenzaHeader>
+          <CredenzaBody className="space-y-6">
+            {/* API Settings */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">API Settings</h3>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <Label htmlFor="firecrawl-base-url">Firecrawl Base URL</Label>
+                  <Input
+                    id="firecrawl-base-url"
+                    placeholder={hasEnvKeys.firecrawl_base_url || "https://api.firecrawl.dev/v1"}
+                    value={config.firecrawl_base_url}
+                    onChange={(e) => setConfig({...config, firecrawl_base_url: e.target.value})}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {hasEnvKeys.firecrawl_base_url !== "https://api.firecrawl.dev/v1" 
+                      ? `Environment: ${hasEnvKeys.firecrawl_base_url}` 
+                      : "Use self-hosted Firecrawl URL if needed"
+                    }
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="openai-key">OpenAI API Key</Label>
+                  <Input
+                    id="openai-key"
+                    type="password"
+                    placeholder={hasEnvKeys.openai ? "Override environment API key (optional)" : "sk-..."}
+                    value={openaiKey}
+                    onChange={(e) => setOpenaiKey(e.target.value)}
+                  />
+                  {hasEnvKeys.openai && (
+                    <p className="text-xs text-green-600 mt-1">
+                      ✅ OpenAI API key found in environment
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor="openai-model">OpenAI Model</Label>
+                  <Input
+                    id="openai-model"
+                    value={config.openai_model}
+                    onChange={(e) => setConfig({...config, openai_model: e.target.value})}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* URL Processing */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">URL Processing</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="map-limit">Map Limit</Label>
+                  <Input
+                    id="map-limit"
+                    type="number"
+                    value={config.map_limit}
+                    onChange={(e) => setConfig({...config, map_limit: parseInt(e.target.value)})}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="process-limit">Process Limit</Label>
+                  <Input
+                    id="process-limit"
+                    type="number"
+                    value={config.process_limit}
+                    onChange={(e) => setConfig({...config, process_limit: parseInt(e.target.value)})}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Set to -1 for unlimited processing</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="include-subdomains"
+                    checked={config.include_subdomains}
+                    onCheckedChange={(checked) => setConfig({...config, include_subdomains: checked})}
+                  />
+                  <Label htmlFor="include-subdomains">Include Subdomains</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="use-sitemap"
+                    checked={config.use_sitemap}
+                    onCheckedChange={(checked) => setConfig({...config, use_sitemap: checked})}
+                  />
+                  <Label htmlFor="use-sitemap">Use Sitemap</Label>
+                </div>
+              </div>
+            </div>
+
+            {/* Processing Settings */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Processing Settings</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="batch-size">Batch Size</Label>
+                  <Input
+                    id="batch-size"
+                    type="number"
+                    value={config.batch_size}
+                    onChange={(e) => setConfig({...config, batch_size: parseInt(e.target.value)})}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="max-workers">Max Workers</Label>
+                  <Input
+                    id="max-workers"
+                    type="number"
+                    value={config.max_workers}
+                    onChange={(e) => setConfig({...config, max_workers: parseInt(e.target.value)})}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="batch-delay">Batch Delay (seconds)</Label>
+                  <Input
+                    id="batch-delay"
+                    type="number"
+                    step="0.1"
+                    value={config.batch_delay}
+                    onChange={(e) => setConfig({...config, batch_delay: parseFloat(e.target.value)})}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Output Settings */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Output Settings</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="generate-full-text"
+                    checked={config.generate_full_text}
+                    onCheckedChange={(checked) => setConfig({...config, generate_full_text: checked})}
+                  />
+                  <Label htmlFor="generate-full-text">Generate Full Text</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="clean-separators"
+                    checked={config.clean_page_separators}
+                    onCheckedChange={(checked) => setConfig({...config, clean_page_separators: checked})}
+                  />
+                  <Label htmlFor="clean-separators">Clean Page Separators</Label>
+                </div>
+              </div>
+            </div>
+
+            {/* Note about manual execution */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-semibold text-blue-800">Manual Execution Required</h4>
+                                <p className="text-blue-700 text-sm mt-1">
+                    Currently, you need to run the Python script manually. Copy the command below:
+                  </p>
+                  <code className="block mt-2 p-2 bg-gray-100 rounded text-xs whitespace-pre-wrap">
+cd fc-py
+.venv\Scripts\activate
+python generate-llmstxt.py {url || 'YOUR_URL'}{firecrawlKey ? ` --firecrawl-api-key ${firecrawlKey}` : ''}{openaiKey ? ` --openai-api-key ${openaiKey}` : ''} --config config.yaml
+                  </code>
+                  {(!firecrawlKey && !openaiKey) && envLoaded && (hasEnvKeys.firecrawl || hasEnvKeys.openai) && (
+                    <p className="text-xs text-green-600 mt-2">
+                      💡 API keys detected in environment - command above should work without additional keys
+                    </p>
+                  )}
+                  {(!hasEnvKeys.firecrawl || !hasEnvKeys.openai) && envLoaded && (
+                    <p className="text-xs text-orange-600 mt-2">
+                      ⚠️ Some API keys missing in environment - please add them above or to .env file
+                    </p>
+                  )}
+            </div>
+          </CredenzaBody>
+          <CredenzaFooter>
+            <CredenzaClose asChild>
+              <Button>Save Configuration</Button>
+            </CredenzaClose>
+          </CredenzaFooter>
         </CredenzaContent>
       </Credenza>
     </PageContainer >

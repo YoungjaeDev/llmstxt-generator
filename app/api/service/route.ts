@@ -19,14 +19,17 @@ export async function POST(request: Request) {
   } else {
     firecrawlApiKey = process.env.FIRECRAWL_API_KEY;
     maxUrls = 10;
-    console.log("Using default limit of 10");
+    console.log(`Using environment Firecrawl API key. Limit set to ${maxUrls}`);
   }
 
   if (!firecrawlApiKey) {
     throw new Error('FIRECRAWL_API_KEY is not set');
   }
 
-  const app = new FirecrawlApp({ apiKey: firecrawlApiKey });
+  const app = new FirecrawlApp({ 
+    apiKey: firecrawlApiKey,
+    apiUrl: process.env.FIRECRAWL_BASE_URL || "https://api.firecrawl.dev/v1"
+  });
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_KEY;
