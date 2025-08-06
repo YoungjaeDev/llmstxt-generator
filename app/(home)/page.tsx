@@ -29,7 +29,6 @@ import {
 export default function Page() {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const prevIsModalOpen = usePrevious(isModalOpen);
-  const [wantsFull, setWantsFull] = React.useState(false);
   const [firecrawlKey, setFirecrawlKey] = React.useState("");
   const [openaiKey, setOpenaiKey] = React.useState("");
   
@@ -54,8 +53,6 @@ export default function Page() {
     max_workers: 5,
     batch_delay: 1.0,
     content_limit: 4000,
-    generate_full_text: true,
-    clean_page_separators: true,
     openai_model: "gpt-4.1-mini",
     openai_temperature: 0.3,
     openai_max_tokens: 100
@@ -64,7 +61,6 @@ export default function Page() {
   const [url, setUrl] = React.useState("");
 
   const hasKey = firecrawlKey.length > 0;
-  const isFull = wantsFull && (hasKey || hasEnvKeys.firecrawl);
   
   // Check environment variables on component mount
   React.useEffect(() => {
@@ -162,9 +158,9 @@ export default function Page() {
       }
       
       setFinalMessage({
-        fullMessage: data.llmsFulltxt,
+        fullMessage: data.llmstxt,
         message: data.llmstxt,
-        isFull: true, // Python은 항상 full 결과
+        isFull: false,
       });
     } catch (error) {
       setFinalMessage(null);
@@ -175,7 +171,7 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }, [url, wantsFull, hasKey, firecrawlKey, openaiKey, config]);
+  }, [url, hasKey, firecrawlKey, openaiKey, config]);
 
   const handleSubmit = React.useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
@@ -224,10 +220,8 @@ export default function Page() {
       callApi();
     }
   }, [prevIsModalOpen, isModalOpen, hasKey, retryWhenModalClosesWithFilledKey]);
-  const retryWithFullGeneration = React.useCallback(() => {
+  const retryWithApiKey = React.useCallback(() => {
     setIsModalOpen(true);
-    setWantsFull(true);
-
     setRetryWhenModalClosesWithFilledKey(true);
   }, []);
 
@@ -269,17 +263,6 @@ export default function Page() {
 
             {/* Right */}
             <div className="flex space-x-4">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="airplane-mode"
-                    disabled={loading}
-                    checked={isFull}
-                    onCheckedChange={setWantsFull}
-                  />
-                  <Label htmlFor="airplane-mode">llms-full.txt</Label>
-                </div>
-              </div>
               <Button className="w-24" disabled={canSubmit}>
                 {!loading && <span>Generate</span>}
                 {loading && <Loader2 className="size-4 animate-spin" />}
@@ -296,7 +279,7 @@ export default function Page() {
               }}
               className="text-sm text-primary hover:text-primary/80 transition-colors"
             >
-              {hasEnvKeys.firecrawl ? 'Override Firecrawl API key' : 'Enter Firecrawl API key for full generation'}
+              {hasEnvKeys.firecrawl ? 'Override Firecrawl API key' : 'Enter Firecrawl API key'}
             </button>
             <button
               onClick={() => {
@@ -399,9 +382,7 @@ export default function Page() {
 
               {!loading && finalMessage && (
                 <div className="whitespace-pre-wrap h-full w-full overflow-scroll custom-scrollbar">
-                  {finalMessage.isFull
-                    ? finalMessage.fullMessage
-                    : finalMessage.message}
+                  {finalMessage.message}
                   {!hasKey && (
                     <div className="flex justify-center">
                       <div className="px-4 mt-8 mb-4">
@@ -428,7 +409,7 @@ export default function Page() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      navigator.clipboard.writeText(finalMessage.isFull ? finalMessage.fullMessage : finalMessage.message);
+                      navigator.clipboard.writeText(finalMessage.message);
                       toast({
                         title: "Copied to clipboard",
                         description:
@@ -442,19 +423,19 @@ export default function Page() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      const content = finalMessage.isFull ? finalMessage.fullMessage : finalMessage.message;
+                      const content = finalMessage.message;
                       const blob = new Blob([content], { type: 'text/plain' });
                       const url = window.URL.createObjectURL(blob);
                       const a = document.createElement('a');
                       a.href = url;
                       
                       // Extract domain from URL for filename
-                      let filename = finalMessage.isFull ? 'llms-full.txt' : 'llms.txt';
+                      let filename = 'llms.txt';
                       try {
                         const inputUrl = url.startsWith('http') ? url : `https://${url}`;
                         const urlObj = new URL(inputUrl);
                         const domain = urlObj.hostname.replace('www.', '');
-                        filename = finalMessage.isFull ? `${domain}-llms-full.txt` : `${domain}-llms.txt`;
+                        filename = `${domain}-llms.txt`;
                       } catch (e) {
                         // Keep default filename if URL parsing fails
                       }
@@ -471,13 +452,13 @@ export default function Page() {
                       });
                     }}
                                      >
-                     {finalMessage.isFull ? "Download Full" : "Download"}
+                     Download
                    </Button>
                 </div>
 
                 {!hasKey && (
-                  <Button className="w-full" onClick={retryWithFullGeneration}>
-                    Re-try with full generation
+                  <Button className="w-full" onClick={retryWithApiKey}>
+                    Re-try with API key
                   </Button>
                 )}
               </div>
@@ -493,8 +474,8 @@ export default function Page() {
           if (!val) {
             if (firecrawlKey.length === 0) {
               toast({
-                title: "Going normal mode",
-                description: "Full generation requires an API key.",
+                title: "No API key provided",
+                description: "API key can improve generation quality.",
               });
             }
           }
@@ -686,28 +667,6 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Output Settings */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Output Settings</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="generate-full-text"
-                    checked={config.generate_full_text}
-                    onCheckedChange={(checked) => setConfig({...config, generate_full_text: checked})}
-                  />
-                  <Label htmlFor="generate-full-text">Generate Full Text</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="clean-separators"
-                    checked={config.clean_page_separators}
-                    onCheckedChange={(checked) => setConfig({...config, clean_page_separators: checked})}
-                  />
-                  <Label htmlFor="clean-separators">Clean Page Separators</Label>
-                </div>
-              </div>
-            </div>
 
             {/* Note about manual execution */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

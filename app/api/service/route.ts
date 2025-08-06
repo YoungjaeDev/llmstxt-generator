@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     console.log('Args:', args);
 
     // Python 스크립트 실행
-    const result = await new Promise<{ llmstxt: string; llmsFulltxt: string }>((resolve, reject) => {
+    const result = await new Promise<{ llmstxt: string }>((resolve, reject) => {
       const pythonProcess = spawn(pythonCommand, args, {
         cwd: fcPyDir,  // fc-py 폴더에서 실행
         env: {
@@ -97,25 +97,18 @@ export async function POST(request: Request) {
           // 도메인 추출하여 파일명 생성
           const domain = new URL(url).hostname.replace('www.', '');
           const llmsFilePath = path.join(outputDir, `${domain}-llms.txt`);
-          const llmsFullFilePath = path.join(outputDir, `${domain}-llms-full.txt`);
 
-          // 생성된 파일들 읽기
+          // 생성된 파일 읽기
           const llmstxt = await readFile(llmsFilePath, 'utf-8');
-          const llmsFulltxt = fs.existsSync(llmsFullFilePath) 
-            ? await readFile(llmsFullFilePath, 'utf-8')
-            : llmstxt;
 
-          // 임시 파일들 정리
+          // 임시 파일 정리
           try {
             await unlink(llmsFilePath);
-            if (fs.existsSync(llmsFullFilePath)) {
-              await unlink(llmsFullFilePath);
-            }
           } catch (cleanupError) {
             console.warn('Failed to cleanup temp files:', cleanupError);
           }
 
-          resolve({ llmstxt, llmsFulltxt });
+          resolve({ llmstxt });
         } catch (fileError) {
           reject(new Error(`Failed to read output files: ${fileError instanceof Error ? fileError.message : String(fileError)}`));
         }

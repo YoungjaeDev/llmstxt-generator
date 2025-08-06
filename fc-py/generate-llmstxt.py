@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Generate llms.txt and llms-full.txt files for a website using Firecrawl and OpenAI.
+Generate llms.txt files for a website using Firecrawl and OpenAI.
 
 This script:
 1. Maps all URLs from a website using Firecrawl's /map endpoint
 2. Scrapes each URL to get the content
 3. Uses OpenAI to generate titles and descriptions
-4. Creates llms.txt (list of pages with descriptions) and llms-full.txt (full content)
+4. Creates llms.txt (list of pages with descriptions)
 """
 
 import os
@@ -54,10 +54,7 @@ class Config:
     content_limit: int = 4000
     
     # Output settings
-    generate_full_text: bool = True
-    clean_page_separators: bool = True
     filename_pattern: str = "{domain}-llms.txt"
-    full_filename_pattern: str = "{domain}-llms-full.txt"
     
     # Scraping settings
     scraping_formats: List[str] = None
@@ -132,10 +129,7 @@ class Config:
             content_limit=data.get('processing', {}).get('content_limit', cls.content_limit),
             
             # Output settings
-            generate_full_text=data.get('output', {}).get('generate_full_text', cls.generate_full_text),
-            clean_page_separators=data.get('output', {}).get('clean_page_separators', cls.clean_page_separators),
             filename_pattern=data.get('output', {}).get('filename_pattern', cls.filename_pattern),
-            full_filename_pattern=data.get('output', {}).get('full_filename_pattern', cls.full_filename_pattern),
             
             # Scraping settings
             scraping_formats=data.get('scraping', {}).get('formats', cls().scraping_formats),
@@ -326,12 +320,9 @@ Return the response in JSON format:
             "index": index
         }
     
-    def remove_page_separators(self, text: str) -> str:
-        """Remove page separators from text."""
-        return re.sub(r'<\|firecrawl-page-\d+-lllmstxt\|>\n', '', text)
     
     def generate_llmstxt(self, url: str) -> Dict[str, str]:
-        """웹사이트용 llms.txt와 llms-full.txt 파일을 생성하는 메인 함수"""
+        """웹사이트용 llms.txt 파일을 생성하는 메인 함수"""
         logger.info(f"Generating llms.txt for {url}")
         
         # 1단계: 웹사이트의 모든 URL 매핑 (map_limit 사용)
@@ -348,7 +339,6 @@ Return the response in JSON format:
         
         # 출력 문자열 초기화
         llmstxt = f"# {url} llms.txt\n\n"
-        llms_fulltxt = f"# {url} llms-full.txt\n\n"
         
         # URL들을 배치로 처리
         all_results = []
@@ -383,15 +373,9 @@ Return the response in JSON format:
         # 출력 문자열 구성
         for i, result in enumerate(all_results, 1):
             llmstxt += f"- [{result['title']}]({result['url']}): {result['description']}\n"
-            llms_fulltxt += f"<|firecrawl-page-{i}-lllmstxt|>\n## {result['title']}\n{result['markdown']}\n\n"
-        
-        # 선택적으로 페이지 구분자 제거
-        if self.config.clean_page_separators:
-            llms_fulltxt = self.remove_page_separators(llms_fulltxt)
         
         return {
             "llmstxt": llmstxt,
-            "llms_fulltxt": llms_fulltxt,
             "num_urls_processed": len(all_results),
             "num_urls_total": len(urls)
         }
@@ -400,7 +384,7 @@ Return the response in JSON format:
 def main():
     """Main function to run the script."""
     parser = argparse.ArgumentParser(
-        description="Generate llms.txt and llms-full.txt files for a website using Firecrawl and OpenAI"
+        description="Generate llms.txt files for a website using Firecrawl and OpenAI"
     )
     parser.add_argument("url", help="The website URL to process")
     parser.add_argument(
@@ -484,13 +468,6 @@ def main():
             f.write(result["llmstxt"])
         logger.info(f"Saved llms.txt to {llmstxt_path}")
         
-        # 요청된 경우 llms-full.txt 파일 저장
-        if config.generate_full_text:
-            llms_full_filename = config.full_filename_pattern.format(domain=domain)
-            llms_fulltxt_path = os.path.join(args.output_dir, llms_full_filename)
-            with open(llms_fulltxt_path, "w", encoding="utf-8") as f:
-                f.write(result["llms_fulltxt"])
-            logger.info(f"Saved llms-full.txt to {llms_fulltxt_path}")
         
         # 처리 결과 요약 출력
         print(f"\nSuccess! Processed {result['num_urls_processed']} out of {result['num_urls_total']} URLs")
