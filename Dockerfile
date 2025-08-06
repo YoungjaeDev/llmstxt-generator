@@ -1,7 +1,7 @@
-# Railway 배포용 Multi-stage Dockerfile
-FROM node:18-slim as base
+# Railway 배포용 Dockerfile
+FROM node:18-slim
 
-# Python 설치
+# Python과 필수 패키지 설치
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -13,20 +13,23 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 WORKDIR /app
 
-# UV 설치 및 Python 가상환경 설정
+# UV 설치
 RUN pip3 install uv
 
-# Python 의존성 설치
-COPY fc-py/ ./fc-py/
+# Python 의존성 파일 먼저 복사 (캐싱 최적화)
+COPY fc-py/requirements.txt ./fc-py/
 WORKDIR /app/fc-py
 RUN uv venv
 RUN uv pip install -r requirements.txt
 
 WORKDIR /app
 
-# Node.js 의존성 설치
+# Node.js 의존성 파일 먼저 복사 (캐싱 최적화)
 COPY package*.json ./
 RUN npm ci --only=production
+
+# 나머지 Python 파일 복사
+COPY fc-py/ ./fc-py/
 
 # 애플리케이션 코드 복사
 COPY . .
@@ -37,7 +40,7 @@ RUN npm run build
 # 임시 디렉토리 생성
 RUN mkdir -p temp
 
-# 환경변수
+# 환경변수 설정
 ENV NODE_ENV=production
 ENV PORT=3000
 

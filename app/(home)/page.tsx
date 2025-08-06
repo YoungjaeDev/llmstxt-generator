@@ -425,11 +425,11 @@ export default function Page() {
                     onClick={() => {
                       const content = finalMessage.message;
                       const blob = new Blob([content], { type: 'text/plain' });
-                      const url = window.URL.createObjectURL(blob);
+                      const blobUrl = window.URL.createObjectURL(blob);
                       const a = document.createElement('a');
-                      a.href = url;
+                      a.href = blobUrl;
                       
-                      // Extract domain from URL for filename
+                      // Extract domain from input URL for filename
                       let filename = 'llms.txt';
                       try {
                         const inputUrl = url.startsWith('http') ? url : `https://${url}`;
@@ -444,7 +444,7 @@ export default function Page() {
                       document.body.appendChild(a);
                       a.click();
                       document.body.removeChild(a);
-                      window.URL.revokeObjectURL(url);
+                      window.URL.revokeObjectURL(blobUrl);
                       
                       toast({
                         title: "File downloaded",
