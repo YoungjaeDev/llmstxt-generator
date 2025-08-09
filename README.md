@@ -16,6 +16,9 @@ cd llmstxt-generator
 # Install Node.js dependencies
 npm install
 
+# If npm install fails, try:
+npm install --legacy-peer-deps
+
 # Setup Python virtual environment
 cd fc-py
 uv venv
